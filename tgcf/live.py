@@ -54,13 +54,12 @@ async def new_message_handler(event: Union[Message, events.NewMessage]) -> None:
         st.stored[event_uid].update({d: fwded_msg})
     tm.clear()
 
-
 async def edited_message_handler(event) -> None:
-    """Handle message edits."""
+    """Handle edited messages."""
     message = event.message
-
     chat_id = event.chat_id
 
+    # Check if the chat is in the 'from_to' configuration
     if chat_id not in config.from_to:
         return
 
@@ -68,26 +67,43 @@ async def edited_message_handler(event) -> None:
 
     event_uid = st.EventUid(event)
 
+    # Apply plugins to the edited message
     tm = await apply_plugins(message)
 
     if not tm:
         return
 
+    # Get previously forwarded messages for this event
     fwded_msgs = st.stored.get(event_uid)
 
     if fwded_msgs:
-        for _, msg in fwded_msgs.items():
-            if config.CONFIG.live.delete_on_edit == message.text:
-                await msg.delete()
-                await message.delete()
-            else:
-                await msg.edit(tm.text)
+        for dest, msg in fwded_msgs.items():
+            try:
+                if config.CONFIG.live.delete_on_edit == message.text:
+                    # Delete the original and forwarded messages
+                    await msg.delete()
+                    await message.delete()
+                else:
+                    # Edit the previously forwarded message
+                    await msg.edit(tm.text)
+            except Exception as e:
+                logging.error(f"Error editing message: {e}")
+                # Handle the error or log it as needed
+
         return
 
+    # If there were no forwarded messages, send the edited message to destinations
     dest = config.from_to.get(chat_id)
 
     for d in dest:
-        await send_message(d, tm)
+        try:
+            # Send the edited message
+            await send_message(d, tm)
+        except Exception as e:
+            logging.error(f"Error sending edited message: {e}")
+            # Handle the error or log it as needed
+
+    # Clear the temporary message
     tm.clear()
 
 
